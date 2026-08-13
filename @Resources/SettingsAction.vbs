@@ -6,13 +6,21 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 root = fso.GetParentFolderName(WScript.ScriptFullName)
 settings = fso.BuildPath(root, "UserSettings.inc")
 state = fso.BuildPath(root, "UpdateState.inc")
+settingsIni = fso.BuildPath(fso.BuildPath(fso.GetParentFolderName(root), "Settings"), "Settings.ini")
 Set shell = CreateObject("WScript.Shell")
 If action = "toggle-auto" Then
   current = ReadKey(settings, "AutoUpdate", "0")
   If current = "1" Then nextValue = "0" Else nextValue = "1"
   ReplaceKey settings, "AutoUpdate", nextValue
   ReplaceKey state, "AutoUpdate", nextValue
-  If nextValue = "1" Then ReplaceKey state, "AutoUpdateLabel", "ON" Else ReplaceKey state, "AutoUpdateLabel", "OFF"
+  ReplaceKey settingsIni, "AutoUpdate", nextValue
+  If nextValue = "1" Then
+    ReplaceKey state, "AutoUpdateLabel", "ON"
+    ReplaceKey settingsIni, "AutoUpdateLabel", "ON"
+  Else
+    ReplaceKey state, "AutoUpdateLabel", "OFF"
+    ReplaceKey settingsIni, "AutoUpdateLabel", "OFF"
+  End If
   shell.Run """C:\Program Files\Rainmeter\Rainmeter.exe"" !Refresh ""WindowsPorthexTheme\Settings""", 0, False
 ElseIf action = "profiles" Then
   python = FindPython(shell, fso)
@@ -24,10 +32,16 @@ ElseIf action = "profiles" Then
     ReplaceKey state, "ProfileState", "READY"
     ReplaceKey state, "ProfileDetail", "Quiet / Work / Deep Focus are available."
     ReplaceKey state, "ProfileColor", "95,210,140,255"
+    ReplaceKey settingsIni, "ProfileState", "READY"
+    ReplaceKey settingsIni, "ProfileDetail", "Quiet / Work / Deep Focus are available."
+    ReplaceKey settingsIni, "ProfileColor", "95,210,140,255"
   Else
     ReplaceKey state, "ProfileState", "SETUP ERROR"
     ReplaceKey state, "ProfileDetail", "Virtual desktop setup failed."
     ReplaceKey state, "ProfileColor", "184,104,88,255"
+    ReplaceKey settingsIni, "ProfileState", "SETUP ERROR"
+    ReplaceKey settingsIni, "ProfileDetail", "Virtual desktop setup failed."
+    ReplaceKey settingsIni, "ProfileColor", "184,104,88,255"
   End If
   shell.Run """C:\Program Files\Rainmeter\Rainmeter.exe"" !Refresh ""WindowsPorthexTheme\Settings""", 0, False
 Else

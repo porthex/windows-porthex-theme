@@ -71,6 +71,16 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(latest, "1.1.0")
         self.assertEqual(state["UpdateState"], "UPDATE AVAILABLE")
 
+    def test_runtime_variables_are_directly_declared(self):
+        settings = (ROOT / "Settings" / "Settings.ini").read_text(encoding="utf-8-sig")
+        topbar = (ROOT / "TopBar" / "TopBar.ini").read_text(encoding="utf-8-sig")
+        field = (ROOT / "Field" / "Field.ini").read_text(encoding="utf-8-sig")
+        for key in ("InstalledVersion", "LatestVersion", "UpdateState", "AutoUpdateLabel", "ProfileState"):
+            self.assertRegex(settings, rf"(?m)^{key}=")
+        for key in ("ProfileIndex", "ProfileName", "ProfileIndicatorX"):
+            self.assertRegex(topbar, rf"(?m)^{key}=")
+        self.assertRegex(field, r"(?m)^ProfileFieldBase=")
+
     def test_runtime_files_are_ignored(self):
         ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
         for name in ("GoogleData.inc", "ServerData.inc", "*.state.json", "*.key", "*.pem"):

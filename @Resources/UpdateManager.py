@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 RESOURCES = ROOT / "@Resources"
 USER_SETTINGS = RESOURCES / "UserSettings.inc"
 STATE_INC = RESOURCES / "UpdateState.inc"
+SETTINGS_INI = ROOT / "Settings" / "Settings.ini"
 PROFILE_INC = RESOURCES / "Profile.inc"
 INSTALLED_MANIFEST = ROOT / "package-manifest.json"
 RAINMETER = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Rainmeter" / "Rainmeter.exe"
@@ -64,6 +65,14 @@ def write_state(**updates: str) -> None:
     temp = STATE_INC.with_suffix(".tmp")
     temp.write_text(text, encoding="utf-8")
     os.replace(temp, STATE_INC)
+    if SETTINGS_INI.is_file():
+        source = SETTINGS_INI.read_text(encoding="utf-8-sig")
+        for key in order:
+            if re.search(rf"(?m)^{re.escape(key)}=", source):
+                source = re.sub(rf"(?m)^{re.escape(key)}=.*$", f"{key}={current.get(key, '')}", source, count=1)
+        settings_temp = SETTINGS_INI.with_suffix(".tmp")
+        settings_temp.write_text(source, encoding="utf-8")
+        os.replace(settings_temp, SETTINGS_INI)
 
 
 def refresh_settings() -> None:

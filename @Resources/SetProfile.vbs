@@ -11,6 +11,8 @@ End Select
 Set fso = CreateObject("Scripting.FileSystemObject")
 root = fso.GetParentFolderName(WScript.ScriptFullName)
 profile = fso.BuildPath(root, "Profile.inc")
+topbar = fso.BuildPath(fso.BuildPath(fso.GetParentFolderName(root), "TopBar"), "TopBar.ini")
+field = fso.BuildPath(fso.BuildPath(fso.GetParentFolderName(root), "Field"), "Field.ini")
 controller = fso.BuildPath(root, "WorkspaceController.py")
 Set shell = CreateObject("WScript.Shell")
 python = FindPython(shell, fso)
@@ -28,6 +30,10 @@ ReplaceKey profile, "ProfileIndex", idx
 ReplaceKey profile, "ProfileName", label
 ReplaceKey profile, "ProfileIndicatorX", indicator
 ReplaceKey profile, "ProfileFieldBase", base
+ReplaceKey topbar, "ProfileIndex", idx
+ReplaceKey topbar, "ProfileName", label
+ReplaceKey topbar, "ProfileIndicatorX", indicator
+ReplaceKey field, "ProfileFieldBase", base
 rm = Quote("C:\Program Files\Rainmeter\Rainmeter.exe")
 shell.Run rm & " !Refresh ""WindowsPorthexTheme\TopBar""", 0, True
 shell.Run rm & " !Refresh ""WindowsPorthexTheme\Field""", 0, False
