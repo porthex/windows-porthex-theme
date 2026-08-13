@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.tmp
+*.log
+*.state.json
+@Resources/GoogleData.inc
+@Resources/ServerData.inc
+@Resources/google_widget_token.json
+dist/
+.env
+*.key
+*.pem

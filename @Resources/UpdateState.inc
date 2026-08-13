@@ -1,0 +1,11 @@
+AutoUpdate=0
+AutoUpdateLabel=OFF
+InstalledVersion=1.0.0
+LatestVersion=UNKNOWN
+UpdateState=NOT CHECKED
+UpdateDetail=Check GitHub for the latest release.
+UpdateColor=129,127,120,255
+LastChecked=NEVER
+ProfileState=NOT CHECKED
+ProfileDetail=Run setup to create Quiet, Work, and Deep Focus.
+ProfileColor=129,127,120,255
