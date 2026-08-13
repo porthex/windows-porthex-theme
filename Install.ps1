@@ -17,8 +17,16 @@ if ((Resolve-Path $source).Path -ne $target -and (Test-Path $target)) {
     Copy-Item $target $backup -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path $target | Out-Null
+$preserved = @{}
+foreach ($relative in @('@Resources\UserSettings.inc','@Resources\Profile.inc')) {
+    $path = Join-Path $target $relative
+    if (Test-Path $path) { $preserved[$relative] = [IO.File]::ReadAllBytes($path) }
+}
 if ((Resolve-Path $source).Path -ne (Resolve-Path $target).Path) {
     Copy-Item (Join-Path $source '*') $target -Recurse -Force
+}
+foreach ($relative in $preserved.Keys) {
+    [IO.File]::WriteAllBytes((Join-Path $target $relative), $preserved[$relative])
 }
 
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
