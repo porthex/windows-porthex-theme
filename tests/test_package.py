@@ -73,6 +73,18 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(latest, "1.1.0")
         self.assertEqual(state["UpdateState"], "UPDATE AVAILABLE")
 
+    def test_setup_exercises_all_profile_switches(self):
+        controller = (ROOT / "@Resources" / "WorkspaceController.py").read_text(encoding="utf-8")
+        self.assertIn("for requested in range(3)", controller)
+        self.assertIn("switch_and_verify(dll, original)", controller)
+
+    def test_updater_handles_bad_zip_and_installer_uses_same_mutex(self):
+        updater_text = (ROOT / "@Resources" / "UpdateManager.py").read_text(encoding="utf-8")
+        installer = (ROOT / "Install.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn("zipfile.BadZipFile", updater_text)
+        self.assertEqual(updater.MUTEX_NAME, r"Local\WindowsPorthexThemeUpdater")
+        self.assertIn(r"Local\WindowsPorthexThemeUpdater", installer)
+
     def test_manifest_paths_are_confined(self):
         for value in ("../escape", "a/../../escape", "C:/escape", "/escape", "a//b", "./a"):
             with self.assertRaises(RuntimeError, msg=value):

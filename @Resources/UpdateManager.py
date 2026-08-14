@@ -316,7 +316,7 @@ def main() -> None:
                     print(json.dumps({"auto": True, "result": install()}))
                 else:
                     print(json.dumps({"auto": False, "result": "disabled"}))
-    except (OSError, ValueError, RuntimeError, urllib.error.URLError) as error:
+    except (OSError, ValueError, RuntimeError, urllib.error.URLError, zipfile.BadZipFile) as error:
         write_state(
             UpdateState="UPDATE ERROR",
             UpdateDetail=safe(f"{type(error).__name__}: {error}"),

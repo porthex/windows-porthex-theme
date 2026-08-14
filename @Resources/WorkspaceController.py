@@ -70,6 +70,19 @@ def ensure_three(dll):
     return count, names
 
 
+def switch_and_verify(dll, requested: int) -> int:
+    result = dll.GoToDesktopNumber(requested)
+    if result != 1:
+        raise RuntimeError(f"Desktop switch failed: {result}")
+    current = dll.GetCurrentDesktopNumber()
+    for _ in range(10):
+        if current == requested:
+            return current
+        time.sleep(0.1)
+        current = dll.GetCurrentDesktopNumber()
+    raise RuntimeError(f"Desktop switch mismatch: requested {requested}, current {current}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=("setup", "switch", "status"))
@@ -79,26 +92,23 @@ def main():
     output: dict[str, object] = {}
     if args.action == "setup":
         count, names = ensure_three(dll)
-        output.update({"count": count, "names": names, "pinned": pin_rainmeter(dll)})
+        original = dll.GetCurrentDesktopNumber()
+        verified = []
+        try:
+            for requested in range(3):
+                verified.append(switch_and_verify(dll, requested))
+        finally:
+            switch_and_verify(dll, original)
+        output.update({"count": count, "names": names, "verified": verified, "pinned": pin_rainmeter(dll)})
     elif args.action == "switch":
         if args.desktop not in (1, 2, 3):
             raise SystemExit("desktop must be 1, 2, or 3")
         if dll.GetDesktopCount() < 3:
             ensure_three(dll)
         pin_rainmeter(dll)
-        result = dll.GoToDesktopNumber(args.desktop - 1)
-        if result != 1:
-            raise RuntimeError(f"Desktop switch failed: {result}")
         requested = args.desktop - 1
-        current = dll.GetCurrentDesktopNumber()
-        for _ in range(10):
-            if current == requested:
-                break
-            time.sleep(0.1)
-            current = dll.GetCurrentDesktopNumber()
-        if current != requested:
-            raise RuntimeError(f"Desktop switch mismatch: requested {requested}, current {current}")
-        output.update({"requested": requested, "current": current, "result": result})
+        current = switch_and_verify(dll, requested)
+        output.update({"requested": requested, "current": current, "result": 1})
     else:
         output.update({"count": dll.GetDesktopCount(), "current": dll.GetCurrentDesktopNumber(), "pinned": pin_rainmeter(dll)})
     print(json.dumps(output))

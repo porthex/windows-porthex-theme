@@ -1,6 +1,6 @@
 AutoUpdate=0
 AutoUpdateLabel=OFF
-InstalledVersion=1.0.6
+InstalledVersion=1.0.7
 LatestVersion=UNKNOWN
 UpdateState=NOT CHECKED
 UpdateDetail=Check GitHub for the latest release.

@@ -10,6 +10,10 @@ $wscript = Join-Path $env:WINDIR 'System32\wscript.exe'
 $backup = $null
 $hadTarget = Test-Path $target
 $tasks = @('PorthexThemeAutoUpdate','PorthexTaskbarStatusHost','WindowsPorthexServerMonitor')
+$mutex = New-Object System.Threading.Mutex($false, 'Local\WindowsPorthexThemeUpdater')
+$mutexHeld = $false
+try { $mutexHeld = $mutex.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $mutexHeld = $true }
+if (-not $mutexHeld) { throw 'Another Porthex install or update is already running.' }
 $existingTasks = @{}
 foreach ($name in $tasks) {
     $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
@@ -59,18 +63,33 @@ try {
     Start-Process $rainmeter -ArgumentList '!ActivateConfig','WindowsPorthexTheme\Settings','Settings.ini' -Wait
     Write-Output "Porthex theme installed at $target"
 } catch {
-    foreach ($name in $tasks) {
-        if ($existingTasks[$name]) {
-            Register-ScheduledTask -TaskName $name -Xml $existingTasks[$name] -Force | Out-Null
-        } else {
-            Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
+    $installError = $_
+    $rollbackErrors = @()
+    try {
+        if ($backup -and (Test-Path $backup)) {
+            $failed = "$target.failed-$PID"
+            if (Test-Path $failed) { Remove-Item $failed -Recurse -Force }
+            if (Test-Path $target) { Move-Item $target $failed }
+            try { Copy-Item $backup $target -Recurse -Force }
+            catch {
+                if (Test-Path $target) { Remove-Item $target -Recurse -Force -ErrorAction SilentlyContinue }
+                if (Test-Path $failed) { Move-Item $failed $target }
+                throw
+            }
+            if (Test-Path $failed) { Remove-Item $failed -Recurse -Force }
+        } elseif (-not $hadTarget -and (Test-Path $target)) {
+            Remove-Item $target -Recurse -Force
         }
+    } catch { $rollbackErrors += "filesystem: $($_.Exception.Message)" }
+    foreach ($name in $tasks) {
+        try {
+            if ($existingTasks[$name]) { Register-ScheduledTask -TaskName $name -Xml $existingTasks[$name] -Force | Out-Null }
+            else { Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue }
+        } catch { $rollbackErrors += "task ${name}: $($_.Exception.Message)" }
     }
-    if ($backup -and (Test-Path $backup)) {
-        Remove-Item $target -Recurse -Force -ErrorAction SilentlyContinue
-        Copy-Item $backup $target -Recurse -Force
-    } elseif (-not $hadTarget) {
-        Remove-Item $target -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    throw
+    if ($rollbackErrors.Count) { throw "Install failed: $($installError.Exception.Message). Rollback errors: $($rollbackErrors -join '; ')" }
+    throw $installError
+} finally {
+    if ($mutexHeld) { $mutex.ReleaseMutex() }
+    $mutex.Dispose()
 }
