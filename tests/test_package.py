@@ -71,6 +71,17 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(latest, "1.1.0")
         self.assertEqual(state["UpdateState"], "UPDATE AVAILABLE")
 
+    def test_installed_manifest_accepts_windows_utf8_bom(self):
+        original = updater.INSTALLED_MANIFEST
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                manifest = Path(tmp) / "package-manifest.json"
+                manifest.write_text('{"version":"1.2.3"}', encoding="utf-8-sig")
+                updater.INSTALLED_MANIFEST = manifest
+                self.assertEqual(updater.installed_version(), "1.2.3")
+        finally:
+            updater.INSTALLED_MANIFEST = original
+
     def test_vbs_option_explicit_declarations_cover_runtime_paths(self):
         profile = (ROOT / "@Resources" / "SetProfile.vbs").read_text(encoding="utf-8-sig")
         settings = (ROOT / "@Resources" / "SettingsAction.vbs").read_text(encoding="utf-8-sig")

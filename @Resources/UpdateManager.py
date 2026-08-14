@@ -112,7 +112,7 @@ def latest_release() -> tuple[dict, dict[str, dict]]:
 
 def installed_version() -> str:
     try:
-        return str(json.loads(INSTALLED_MANIFEST.read_text(encoding="utf-8"))["version"])
+        return str(json.loads(INSTALLED_MANIFEST.read_text(encoding="utf-8-sig"))["version"])
     except Exception:
         return parse_inc(STATE_INC).get("InstalledVersion", "0.0.0")
 
@@ -187,7 +187,7 @@ def install() -> str:
         old_files = set()
         try:
             if INSTALLED_MANIFEST.is_file():
-                old_files = set(json.loads(INSTALLED_MANIFEST.read_text(encoding="utf-8")).get("files", []))
+                old_files = set(json.loads(INSTALLED_MANIFEST.read_text(encoding="utf-8-sig")).get("files", []))
             new_files = set(manifest.get("files", []))
             for relative in sorted(old_files - new_files - PRESERVE):
                 target = ROOT / relative
