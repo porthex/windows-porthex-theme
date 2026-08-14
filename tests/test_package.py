@@ -42,9 +42,11 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(updater.version_tuple("1.0.0"), (1, 0, 0))
 
     def test_zip_traversal_rejected(self):
-        with self.assertRaises(RuntimeError):
-            updater.validate_zip_member("../escape.txt")
+        for name in ("../escape.txt", "C:/escape.txt", r"C:\escape.txt", r"\\server\share\escape.txt", "/rooted.txt", "safe/../../escape.txt", "safe//file.txt"):
+            with self.assertRaises(RuntimeError, msg=name):
+                updater.validate_zip_member(name)
         updater.validate_zip_member("WindowsPorthexTheme/TopBar/TopBar.ini")
+        updater.validate_zip_member("WindowsPorthexTheme/TopBar/")
 
     def test_checksum_parser(self):
         with tempfile.TemporaryDirectory() as value:

@@ -150,7 +150,15 @@ def read_checksum(path: Path) -> str:
 
 def validate_zip_member(name: str) -> None:
     normalized = name.replace("\\", "/")
-    if normalized.startswith("/") or ".." in Path(normalized).parts:
+    candidate = normalized.rstrip("/")
+    parts = candidate.split("/")
+    if (
+        not candidate
+        or "\x00" in candidate
+        or normalized.startswith("/")
+        or re.match(r"^[A-Za-z]:", candidate)
+        or any(part in ("", ".", "..") or ":" in part for part in parts)
+    ):
         raise RuntimeError(f"Unsafe path in release: {name}")
 
 
@@ -242,27 +250,24 @@ def install() -> str:
         backup_root = ROOT.parent.parent / "Backups"
         backup_root.mkdir(parents=True, exist_ok=True)
         backup = backup_root / f"WindowsPorthexTheme-before-{latest}-{datetime.now():%Y%m%d-%H%M%S}"
+        replacement = ROOT.parent / f".{ROOT.name}-replacement-{os.getpid()}"
+        displaced = ROOT.parent / f".{ROOT.name}-previous-{os.getpid()}"
         shutil.copytree(ROOT, backup)
         preserved = {name: confined_target(name).read_bytes() for name in PRESERVE if confined_target(name).is_file()}
-        old_files = set()
-        mutation_started = False
+        shutil.copytree(source, replacement)
+        for name, content in preserved.items():
+            target = replacement / Path(*normalize_manifest_path(name).split("/"))
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+        swapped = False
         try:
-            if INSTALLED_MANIFEST.is_file():
-                installed = json.loads(INSTALLED_MANIFEST.read_text(encoding="utf-8-sig"))
-                old_values = installed.get("files", [])
-                if not isinstance(old_values, list):
-                    raise RuntimeError("Installed manifest file list is invalid")
-                old_files = {normalize_manifest_path(value) for value in old_values}
-            mutation_started = True
-            for relative in sorted(old_files - new_files - PRESERVE):
-                target = confined_target(relative)
-                if target.is_file():
-                    target.unlink()
-            shutil.copytree(source, ROOT, dirs_exist_ok=True)
-            for name, content in preserved.items():
-                target = confined_target(name)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(content)
+            ROOT.rename(displaced)
+            try:
+                replacement.rename(ROOT)
+                swapped = True
+            except Exception:
+                displaced.rename(ROOT)
+                raise
             write_state(
                 AutoUpdate=parse_inc(USER_SETTINGS).get("AutoUpdate", "0"),
                 AutoUpdateLabel="ON" if parse_inc(USER_SETTINGS).get("AutoUpdate", "0") == "1" else "OFF",
@@ -276,10 +281,20 @@ def install() -> str:
             if installed_version() != latest:
                 raise RuntimeError("Post-install version verification failed")
         except Exception:
-            if mutation_started:
-                shutil.rmtree(ROOT, ignore_errors=True)
-                shutil.copytree(backup, ROOT)
+            if swapped:
+                failed = ROOT.parent / f".{ROOT.name}-failed-{os.getpid()}"
+                ROOT.rename(failed)
+                try:
+                    displaced.rename(ROOT)
+                except Exception as rollback_error:
+                    failed.rename(ROOT)
+                    raise RuntimeError(f"Update failed and rollback could not restore the previous tree: {rollback_error}") from rollback_error
+                shutil.rmtree(failed, ignore_errors=True)
             raise
+        else:
+            shutil.rmtree(displaced, ignore_errors=True)
+        finally:
+            shutil.rmtree(replacement, ignore_errors=True)
     if RAINMETER.is_file():
         subprocess.Popen([str(RAINMETER), "!RefreshApp"], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     return latest
