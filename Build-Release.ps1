@@ -10,7 +10,7 @@ $repo = (Resolve-Path $repo).Path
 $stageRoot = Join-Path ([IO.Path]::GetTempPath()) ("porthex-theme-package-" + [guid]::NewGuid())
 $stage = Join-Path $stageRoot 'WindowsPorthexTheme'
 New-Item -ItemType Directory -Force -Path $stage,$Output | Out-Null
-$excludedDirs = @('.git','dist','tests','docs','.github')
+$excludedDirs = @('.git','dist','tests','.github')
 $excludedFiles = @('TaskbarStatusHost.state.json','GoogleData.inc','ServerData.inc')
 Get-ChildItem $repo -Force | Where-Object { $excludedDirs -notcontains $_.Name } | ForEach-Object {
     Copy-Item $_.FullName $stage -Recurse -Force

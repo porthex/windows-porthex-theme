@@ -1,8 +1,9 @@
-"""Check, install, and automatically apply signed-by-hash Porthex theme releases.
+"""Check, install, and automatically apply integrity-checked Porthex releases.
 
 The transport trust boundary is the public GitHub release. Each release must contain
 WindowsPorthexTheme.zip and WindowsPorthexTheme.zip.sha256. Updates are staged,
-SHA-256 verified, validated, backed up, installed, and rolled back on failure.
+SHA-256 checked, validated, backed up, installed, and rolled back on failure.
+The checksum detects corruption; GitHub account/release security is the trust root.
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ import tempfile
 import urllib.error
 import urllib.request
 import zipfile
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -37,6 +39,7 @@ PRESERVE = {
     "@Resources/ServerData.inc",
     "@Resources/TaskbarStatusHost.state.json",
 }
+MUTEX_NAME = "Local\\WindowsPorthexThemeUpdater"
 
 
 def parse_inc(path: Path) -> dict[str, str]:
@@ -151,6 +154,64 @@ def validate_zip_member(name: str) -> None:
         raise RuntimeError(f"Unsafe path in release: {name}")
 
 
+def normalize_manifest_path(value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise RuntimeError("Package manifest contains an invalid path")
+    normalized = value.replace("\\", "/")
+    parts = normalized.split("/")
+    if Path(normalized).is_absolute() or normalized.startswith("/") or any(part in ("", ".", "..") or ":" in part for part in parts):
+        raise RuntimeError(f"Unsafe path in package manifest: {value}")
+    return "/".join(parts)
+
+
+def validate_manifest(manifest: object, source: Path, expected_version: str) -> set[str]:
+    if not isinstance(manifest, dict) or manifest.get("package") != "WindowsPorthexTheme":
+        raise RuntimeError("Package manifest identity is invalid")
+    if str(manifest.get("version")) != expected_version:
+        raise RuntimeError("Release tag and package version do not match")
+    values = manifest.get("files")
+    if not isinstance(values, list):
+        raise RuntimeError("Package manifest file list is invalid")
+    files = [normalize_manifest_path(value) for value in values]
+    if len(files) != len(set(files)):
+        raise RuntimeError("Package manifest contains duplicate paths")
+    actual = {path.relative_to(source).as_posix() for path in source.rglob("*") if path.is_file() and path.name != "package-manifest.json"}
+    if set(files) != actual:
+        raise RuntimeError("Package manifest does not exactly match staged files")
+    return set(files)
+
+
+def confined_target(relative: str) -> Path:
+    normalized = normalize_manifest_path(relative)
+    target = (ROOT / Path(*normalized.split("/"))).resolve()
+    try:
+        target.relative_to(ROOT.resolve())
+    except ValueError as error:
+        raise RuntimeError(f"Manifest path escapes installation: {relative}") from error
+    return target
+
+
+@contextmanager
+def updater_lock():
+    if os.name != "nt":
+        yield
+        return
+    import ctypes
+    kernel32 = ctypes.windll.kernel32
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    handle = kernel32.CreateMutexW(None, True, MUTEX_NAME)
+    if not handle:
+        raise OSError("Could not create updater mutex")
+    if kernel32.GetLastError() == 183:
+        kernel32.CloseHandle(handle)
+        raise RuntimeError("Another Porthex update is already running")
+    try:
+        yield
+    finally:
+        kernel32.ReleaseMutex(handle)
+        kernel32.CloseHandle(handle)
+
+
 def install() -> str:
     available, latest, _release, assets = check()
     if not available:
@@ -176,42 +237,49 @@ def install() -> str:
         manifest_path = source / "package-manifest.json"
         if not manifest_path.is_file() or not (source / "Settings" / "Settings.ini").is_file() or not (source / "TopBar" / "TopBar.ini").is_file():
             raise RuntimeError("Release package structure is invalid")
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if str(manifest.get("version")) != latest:
-            raise RuntimeError("Release tag and package version do not match")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+        new_files = validate_manifest(manifest, source, latest)
         backup_root = ROOT.parent.parent / "Backups"
         backup_root.mkdir(parents=True, exist_ok=True)
         backup = backup_root / f"WindowsPorthexTheme-before-{latest}-{datetime.now():%Y%m%d-%H%M%S}"
         shutil.copytree(ROOT, backup)
-        preserved = {name: (ROOT / name).read_bytes() for name in PRESERVE if (ROOT / name).is_file()}
+        preserved = {name: confined_target(name).read_bytes() for name in PRESERVE if confined_target(name).is_file()}
         old_files = set()
+        mutation_started = False
         try:
             if INSTALLED_MANIFEST.is_file():
-                old_files = set(json.loads(INSTALLED_MANIFEST.read_text(encoding="utf-8-sig")).get("files", []))
-            new_files = set(manifest.get("files", []))
+                installed = json.loads(INSTALLED_MANIFEST.read_text(encoding="utf-8-sig"))
+                old_values = installed.get("files", [])
+                if not isinstance(old_values, list):
+                    raise RuntimeError("Installed manifest file list is invalid")
+                old_files = {normalize_manifest_path(value) for value in old_values}
+            mutation_started = True
             for relative in sorted(old_files - new_files - PRESERVE):
-                target = ROOT / relative
+                target = confined_target(relative)
                 if target.is_file():
                     target.unlink()
             shutil.copytree(source, ROOT, dirs_exist_ok=True)
             for name, content in preserved.items():
-                target = ROOT / name
+                target = confined_target(name)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(content)
+            write_state(
+                AutoUpdate=parse_inc(USER_SETTINGS).get("AutoUpdate", "0"),
+                AutoUpdateLabel="ON" if parse_inc(USER_SETTINGS).get("AutoUpdate", "0") == "1" else "OFF",
+                InstalledVersion=latest,
+                LatestVersion=latest,
+                UpdateState="UPDATED",
+                UpdateDetail=f"Version {latest} installed. Backup created.",
+                UpdateColor="95,210,140,255",
+                LastChecked=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            )
+            if installed_version() != latest:
+                raise RuntimeError("Post-install version verification failed")
         except Exception:
-            shutil.rmtree(ROOT)
-            shutil.copytree(backup, ROOT)
+            if mutation_started:
+                shutil.rmtree(ROOT, ignore_errors=True)
+                shutil.copytree(backup, ROOT)
             raise
-    write_state(
-        AutoUpdate=parse_inc(USER_SETTINGS).get("AutoUpdate", "0"),
-        AutoUpdateLabel="ON" if parse_inc(USER_SETTINGS).get("AutoUpdate", "0") == "1" else "OFF",
-        InstalledVersion=latest,
-        LatestVersion=latest,
-        UpdateState="UPDATED",
-        UpdateDetail=f"Version {latest} installed. Backup created.",
-        UpdateColor="95,210,140,255",
-        LastChecked=datetime.now().strftime("%Y-%m-%d %H:%M"),
-    )
     if RAINMETER.is_file():
         subprocess.Popen([str(RAINMETER), "!RefreshApp"], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     return latest
@@ -222,16 +290,17 @@ def main() -> None:
     parser.add_argument("action", choices=("check", "install", "auto"))
     args = parser.parse_args()
     try:
-        if args.action == "check":
-            available, latest, *_ = check()
-            print(json.dumps({"available": available, "latest": latest, "installed": installed_version()}))
-        elif args.action == "install":
-            print(json.dumps({"installed": install()}))
-        else:
-            if parse_inc(USER_SETTINGS).get("AutoUpdate", "0") == "1":
-                print(json.dumps({"auto": True, "result": install()}))
+        with updater_lock():
+            if args.action == "check":
+                available, latest, *_ = check()
+                print(json.dumps({"available": available, "latest": latest, "installed": installed_version()}))
+            elif args.action == "install":
+                print(json.dumps({"installed": install()}))
             else:
-                print(json.dumps({"auto": False, "result": "disabled"}))
+                if parse_inc(USER_SETTINGS).get("AutoUpdate", "0") == "1":
+                    print(json.dumps({"auto": True, "result": install()}))
+                else:
+                    print(json.dumps({"auto": False, "result": "disabled"}))
     except (OSError, ValueError, RuntimeError, urllib.error.URLError) as error:
         write_state(
             UpdateState="UPDATE ERROR",

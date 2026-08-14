@@ -65,6 +65,8 @@ def ensure_three(dll):
             raise RuntimeError("Could not create the required Windows virtual desktops")
         count = dll.GetDesktopCount()
     names = [dll.SetDesktopName(index, name.encode("utf-8")) for index, name in enumerate(NAMES)]
+    if any(result != 1 for result in names):
+        raise RuntimeError(f"Could not name all Porthex desktops: {names}")
     return count, names
 
 
@@ -87,8 +89,16 @@ def main():
         result = dll.GoToDesktopNumber(args.desktop - 1)
         if result != 1:
             raise RuntimeError(f"Desktop switch failed: {result}")
-        time.sleep(0.35)
-        output.update({"requested": args.desktop - 1, "current": dll.GetCurrentDesktopNumber(), "result": result})
+        requested = args.desktop - 1
+        current = dll.GetCurrentDesktopNumber()
+        for _ in range(10):
+            if current == requested:
+                break
+            time.sleep(0.1)
+            current = dll.GetCurrentDesktopNumber()
+        if current != requested:
+            raise RuntimeError(f"Desktop switch mismatch: requested {requested}, current {current}")
+        output.update({"requested": requested, "current": current, "result": result})
     else:
         output.update({"count": dll.GetDesktopCount(), "current": dll.GetCurrentDesktopNumber(), "pinned": pin_rainmeter(dll)})
     print(json.dumps(output))

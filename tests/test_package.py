@@ -71,6 +71,27 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(latest, "1.1.0")
         self.assertEqual(state["UpdateState"], "UPDATE AVAILABLE")
 
+    def test_manifest_paths_are_confined(self):
+        for value in ("../escape", "a/../../escape", "C:/escape", "/escape", "a//b", "./a"):
+            with self.assertRaises(RuntimeError, msg=value):
+                updater.normalize_manifest_path(value)
+        self.assertEqual(updater.normalize_manifest_path("@Resources/UserSettings.inc"), "@Resources/UserSettings.inc")
+
+    def test_manifest_must_exactly_match_staging(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp)
+            (source / "TopBar").mkdir()
+            (source / "TopBar" / "TopBar.ini").write_text("x", encoding="utf-8")
+            manifest = {"package": "WindowsPorthexTheme", "version": "2.0.0", "files": ["TopBar/TopBar.ini"]}
+            self.assertEqual(updater.validate_manifest(manifest, source, "2.0.0"), {"TopBar/TopBar.ini"})
+            manifest["files"] = ["TopBar/TopBar.ini", "ghost.txt"]
+            with self.assertRaises(RuntimeError):
+                updater.validate_manifest(manifest, source, "2.0.0")
+
+    def test_release_builder_packages_docs(self):
+        script = (ROOT / "Build-Release.ps1").read_text(encoding="utf-8-sig")
+        self.assertNotRegex(script, r"excludedDirs\s*=.*['\"]docs['\"]")
+
     def test_installed_manifest_accepts_windows_utf8_bom(self):
         original = updater.INSTALLED_MANIFEST
         try:
