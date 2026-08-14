@@ -1,5 +1,5 @@
 Option Explicit
-Dim action, fso, root, settings, state, shell, current, nextValue, python, controller, command, rc
+Dim action, fso, root, settings, state, settingsIni, shell, current, nextValue, python, controller, command, rc
 If WScript.Arguments.Count < 1 Then WScript.Quit 2
 action = LCase(WScript.Arguments(0))
 Set fso = CreateObject("Scripting.FileSystemObject")

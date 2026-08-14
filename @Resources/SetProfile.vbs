@@ -1,5 +1,5 @@
 Option Explicit
-Dim mode, idx, label, base, indicator, fso, root, profile, controller, shell, rm, python, command, rc
+Dim mode, idx, label, base, indicator, fso, root, profile, topbar, field, controller, shell, rm, python, command, rc
 If WScript.Arguments.Count < 1 Then WScript.Quit 2
 mode = LCase(WScript.Arguments(0))
 Select Case mode

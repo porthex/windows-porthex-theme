@@ -71,6 +71,12 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(latest, "1.1.0")
         self.assertEqual(state["UpdateState"], "UPDATE AVAILABLE")
 
+    def test_vbs_option_explicit_declarations_cover_runtime_paths(self):
+        profile = (ROOT / "@Resources" / "SetProfile.vbs").read_text(encoding="utf-8-sig")
+        settings = (ROOT / "@Resources" / "SettingsAction.vbs").read_text(encoding="utf-8-sig")
+        self.assertRegex(profile, r"(?mi)^Dim .*\btopbar\b.*\bfield\b")
+        self.assertRegex(settings, r"(?mi)^Dim .*\bsettingsIni\b")
+
     def test_runtime_variables_are_directly_declared(self):
         settings = (ROOT / "Settings" / "Settings.ini").read_text(encoding="utf-8-sig")
         topbar = (ROOT / "TopBar" / "TopBar.ini").read_text(encoding="utf-8-sig")
