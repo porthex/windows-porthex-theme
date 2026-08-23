@@ -19,7 +19,7 @@ def setting(name, fallback):
     return fallback
 
 HOST_ALIAS = setting("ServerHost", "hermes-cloud")
-REMOTE = r'''LANG=C; CPU=$(vmstat 1 2 | tail -1 | awk '{print 100-$15}'); MEM=$(free -m | awk '/^Mem:/{printf "%.0f",$3*100/$2}'); DISK=$(df -P / | awk 'NR==2{gsub("%","",$5); print $5}'); UPTIME=$(uptime -p | sed 's/^up //'); APPS=$(docker ps --format '{{.Names}}|{{.Status}}' 2>/dev/null | tr '\n' ';'); printf 'CPU=%s\nMEM=%s\nDISK=%s\nUPTIME=%s\nAPPS=%s\n' "$CPU" "$MEM" "$DISK" "$UPTIME" "$APPS"'''
+REMOTE = r'''LANG=C; CPU=$(vmstat 1 2 | tail -1 | awk '{print 100-$15}'); MEM=$(free -m | awk '/^Mem:/{printf "%.0f",$3*100/$2}'); DISK=$(df -P / | awk 'NR==2{gsub("%","",$5); print $5}'); UPTIME=$(uptime -p | sed 's/^up //'); printf 'CPU=%s\nMEM=%s\nDISK=%s\nUPTIME=%s\n' "$CPU" "$MEM" "$DISK" "$UPTIME"'''
 
 
 def clean(value, limit=64):
@@ -43,7 +43,6 @@ values = {
     "ServerDisk": "--",
     "ServerUptime": "--",
     "AppHermesState": "OFFLINE",
-    "AppOpenDesignState": "OFFLINE",
 }
 
 try:
@@ -64,7 +63,6 @@ try:
     for key in ("CPU", "MEM", "DISK"):
         if not remote.get(key, "").strip().isdigit():
             raise RuntimeError(f"Invalid {key} value")
-    apps = remote.get("APPS", "").lower()
     values.update({
         "ServerState": "ONLINE",
         "ServerColor": "95,210,140,255",
@@ -73,7 +71,6 @@ try:
         "ServerDisk": clean(remote["DISK"], 3),
         "ServerUptime": clean(remote.get("UPTIME"), 28),
         "AppHermesState": "ONLINE",
-        "AppOpenDesignState": "HEALTHY" if "open-design" in apps and "healthy" in apps else ("RUNNING" if "open-design" in apps else "OFFLINE"),
     })
 except Exception:
     pass
@@ -86,4 +83,4 @@ Path(tmp).write_text(text, encoding="utf-8")
 os.replace(tmp, OUT)
 replace_keys(SERVER, {key: value for key, value in values.items() if key != "ServerDataUpdated"})
 replace_keys(TASKBAR, {"ServerState": values["ServerState"], "ServerColor": values["ServerColor"]})
-print(json.dumps({"online": values["ServerState"] == "ONLINE", "open_design": values["AppOpenDesignState"], "updated": values["ServerDataUpdated"]}))
+print(json.dumps({"online": values["ServerState"] == "ONLINE", "updated": values["ServerDataUpdated"]}))

@@ -3,6 +3,7 @@ __pycache__/
 *.tmp
 *.log
 *.state.json
+@Resources/AIAccountsData.inc
 @Resources/GoogleData.inc
 @Resources/ServerData.inc
 @Resources/google_widget_token.json

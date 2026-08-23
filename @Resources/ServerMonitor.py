@@ -1,5 +1,5 @@
 import base64, json, os, re, socket, subprocess, tempfile, threading, time
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -27,7 +27,7 @@ PORT = int(setting("ServerPort", "2222"))
 STATUS_INTERVAL = 5.0
 RESOURCE_INTERVAL = 10.0
 BACKUP_INTERVAL = 300.0
-REMOTE = r'''LANG=C; CPU=$(vmstat 1 2 | tail -1 | awk '{print 100-$15}'); MEM=$(free -m | awk '/^Mem:/{printf "%.0f",$3*100/$2}'); DISK=$(df -P / | awk 'NR==2{gsub("%","",$5); print $5}'); UPTIME=$(uptime -p | sed 's/^up //'); APPS=$(docker ps --format '{{.Names}}|{{.Status}}' 2>/dev/null | tr '\n' ';'); printf 'CPU=%s\nMEM=%s\nDISK=%s\nUPTIME=%s\nAPPS=%s\n' "$CPU" "$MEM" "$DISK" "$UPTIME" "$APPS"'''
+REMOTE = r'''LANG=C; CPU=$(vmstat 1 2 | tail -1 | awk '{print 100-$15}'); MEM=$(free -m | awk '/^Mem:/{printf "%.0f",$3*100/$2}'); DISK=$(df -P / | awk 'NR==2{gsub("%","",$5); print $5}'); UPTIME=$(uptime -p | sed 's/^up //'); printf 'CPU=%s\nMEM=%s\nDISK=%s\nUPTIME=%s\n' "$CPU" "$MEM" "$DISK" "$UPTIME"'''
 BACKUP_PROBE = r'''set -uo pipefail
 timer="$(systemctl is-active porthex-restic-backup.timer 2>/dev/null || true)"
 service="$(systemctl is-active porthex-restic-backup.service 2>/dev/null || true)"
@@ -81,6 +81,20 @@ state_lock = threading.Lock()
 
 def clean(value, limit=64):
     return " ".join(str(value or "").replace("#", " ").replace("=", " ").split())[:limit] or "--"
+
+
+def renewal_status(date_text, today=None):
+    today = today or date.today()
+    if not date_text.strip():
+        return {"AvoroState": "SET RENEWAL DATE", "AvoroColor": "218,168,92,255", "AvoroRenewal": "RENEW --"}
+    try:
+        renewal = date.fromisoformat(date_text.strip())
+    except ValueError:
+        return {"AvoroState": "INVALID DATE", "AvoroColor": "184,104,88,255", "AvoroRenewal": "RENEW --"}
+    days = (renewal - today).days
+    state = f"EXPIRED {-days}D" if days < 0 else ("DUE TODAY" if days == 0 else ("1 DAY LEFT" if days == 1 else f"{days} DAYS LEFT"))
+    color = "184,104,88,255" if days <= 3 else ("218,168,92,255" if days <= 7 else ("216,210,197,255" if days <= 14 else "95,210,140,255"))
+    return {"AvoroState": state, "AvoroColor": color, "AvoroRenewal": renewal.strftime("RENEW %b %d").upper()}
 
 
 def replace_keys(path, updates):
@@ -143,7 +157,6 @@ def collect_resources():
         "ServerDisk": "--",
         "ServerUptime": "--",
         "AppHermesState": "OFFLINE",
-        "AppOpenDesignState": "OFFLINE",
     }
     try:
         result = subprocess.run(
@@ -162,14 +175,12 @@ def collect_resources():
                 remote[key] = value
         if not all(remote.get(key, "").strip().isdigit() for key in ("CPU", "MEM", "DISK")):
             return values, False
-        apps = remote.get("APPS", "").lower()
         values.update({
             "ServerCpu": clean(remote["CPU"], 3),
             "ServerMemory": clean(remote["MEM"], 3),
             "ServerDisk": clean(remote["DISK"], 3),
             "ServerUptime": clean(remote.get("UPTIME"), 28),
             "AppHermesState": "ONLINE",
-            "AppOpenDesignState": "HEALTHY" if "open-design" in apps and "healthy" in apps else ("RUNNING" if "open-design" in apps else "OFFLINE"),
         })
         return values, True
     except Exception:
@@ -254,6 +265,7 @@ def backup_loop():
         if not ok:
             time.sleep(2)
             values, ok, error = collect_backup()
+        values.update(renewal_status(setting("AvoroRenewalDate", "")))
         with file_lock:
             replace_keys(SERVER, values)
         refresh(r"WindowsPorthexTheme\Server")
